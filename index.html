@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hanta virus outbreak control</title>
+    <style>
+        body {
+		    margin: 0;
+		    overflow: hidden;
+		    /* Updated background properties */
+		    background-image: url('achtergrond.jpg');
+		    background-repeat: repeat;
+		    background-size: auto; /* Keeps the pattern's original scale */
+		    font-family: 'Segoe UI', sans-serif;
+		    cursor: none;
+}
+
+        canvas { display: block; }
+
+        #ui { position: absolute; top: 20px; left: 20px; pointer-events: none; color: #00ffcc; text-shadow: 0 0 10px #000; z-index: 10; }
+        .instructions { position: absolute; bottom: 20px; width: 100%; text-align: center; color: #ff4d4d; font-weight: bold; z-index: 10; }
+
+        /* Gun positioning */
+        .gun-container {
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            pointer-events: none;
+            z-index: 5;
+        }
+        .gun-container img {
+            height: 200px;
+            display: block;
+        }
+
+        /* Fullscreen Image Overlays */
+        .fullscreen-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: black;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            flex-direction: column;
+        }
+        .fullscreen-overlay img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+        .msg {
+            position: absolute;
+            bottom: 30px;
+            color: white;
+            background: rgba(255, 0, 0, 0.7);
+            padding: 15px 30px;
+            cursor: pointer;
+            font-size: 1.5em;
+            border-radius: 5px;
+            text-transform: uppercase;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui">
+        <h2 style="margin:0">HANTA VIRUS OUTBREAK CONTROL</h2>
+        <div style="font-size: 1.5em;">SCORE: <span id="score">0</span> / 1500</div>
+        <div style="color: #ff4d4d;">BREACHES: <span id="missed">0</span> / 5</div>
+    </div>
+
+    <div class="instructions">FIRE AT PURPLE SHIPS ONLY | DON'T LET THEM PASS</div>
+
+    <div class="gun-container">
+        <img src="gun.png" alt="Gun">
+    </div>
+
+    <div id="endOverlay" class="fullscreen-overlay">
+        <img id="endImage" src="" alt="End Game Screen">
+        <div id="endMsg" class="msg" onclick="location.reload()">Click to Restart</div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const scoreEl = document.getElementById('score');
+const missedEl = document.getElementById('missed');
+const endOverlay = document.getElementById('endOverlay');
+const endImage = document.getElementById('endImage');
+const endMsg = document.getElementById('endMsg');
+// Locate the gun image element at the start of your script
+const gunImgElement = document.querySelector('.gun-container img');
+const virusImg = new Image();
+virusImg.src = 'virus.png';
+
+const ship1Explode = new Image();
+ship1Explode.src = 'ship1explode.png';
+
+const ship2Explode = new Image();
+ship2Explode.src = 'ship2explode.png';
+
+
+
+const shipImg2 = new Image();
+shipImg2.src = 'ship2.png';
+
+const purpleShipCanvas2 = document.createElement('canvas');
+const pCtx2 = purpleShipCanvas2.getContext('2d');
+
+shipImg2.onload = () => {
+    purpleShipCanvas2.width = shipImg2.width;
+    purpleShipCanvas2.height = shipImg2.height;
+    pCtx2.drawImage(shipImg2, 0, 0);
+    pCtx2.globalCompositeOperation = 'source-atop';
+    pCtx2.fillStyle = 'rgba(150, 0, 255, 0.6)';
+    pCtx2.fillRect(0, 0, purpleShipCanvas2.width, purpleShipCanvas2.height);
+};
+
+
+
+
+
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+let score = 0;
+let missedInfected = 0;
+let gameActive = true;
+let mouseX = 0, mouseY = 0;
+
+const shipImg = new Image();
+shipImg.src = 'ship1.png';
+
+const purpleShipCanvas = document.createElement('canvas');
+const pCtx = purpleShipCanvas.getContext('2d');
+
+shipImg.onload = () => {
+    purpleShipCanvas.width = shipImg.width;
+    purpleShipCanvas.height = shipImg.height;
+    pCtx.drawImage(shipImg, 0, 0);
+    pCtx.globalCompositeOperation = 'source-atop';
+    pCtx.fillStyle = 'rgba(150, 0, 255, 0.6)';
+    pCtx.fillRect(0, 0, purpleShipCanvas.width, purpleShipCanvas.height);
+};
+
+class Bullet {
+    constructor(x, y) {
+        // Aligned to the center and slightly above the bottom to match the gun model
+        this.x = canvas.width / 2;
+        this.y = canvas.height - 180;
+        const dx = x - this.x;
+        const dy = y - this.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        this.vx = (dx / distance) * 30;
+        this.vy = (dy / distance) * 30;
+        this.markedForDeletion = false;
+    }
+    update() {
+        this.x += this.vx;
+        this.y += this.vy;
+        if (this.y < 0 || this.x < 0 || this.x > canvas.width) this.markedForDeletion = true;
+
+        ships.forEach(ship => {
+            if (!ship.markedForDeletion && this.x > ship.x && this.x < ship.x + ship.width &&
+                this.y > ship.y && this.y < ship.y + ship.height) {
+                this.markedForDeletion = true;
+                ship.hit();
+            }
+        });
+    }
+    draw() {
+        ctx.fillStyle = "#ffff00";
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, 4, 0, Math.PI * 2);
+        ctx.fill();
+    }
+}
+
+class Ship {
+    constructor() {
+        this.width = 160;
+        this.height = 90;
+        this.direction = Math.random() < 0.5 ? 1 : -1;
+        this.x = this.direction === 1 ? -this.width : canvas.width;
+        this.y = Math.random() * (canvas.height - 400) + 50;
+        this.speed = (Math.random() * 2 + 2);
+        this.isInfected = Math.random() < 0.4;
+        this.markedForDeletion = false;
+
+        // Randomly assign ship type (0 for ship1, 1 for ship2)
+        this.type = Math.random() < 0.5 ? 0 : 1;
+
+        this.isExploding = false;
+        this.explosionTimer = 10; // Frames to show the explosion
+
+
+    }
+    update() {
+       if (this.isExploding) {
+	               this.explosionTimer--;
+	               if (this.explosionTimer <= 0) this.markedForDeletion = true;
+	               return; // Stop moving while exploding
+	           }
+
+        this.x += this.speed * this.direction;
+
+
+        if ((this.direction === 1 && this.x > canvas.width) ||
+            (this.direction === -1 && this.x < -this.width)) {
+            if (this.isInfected) {
+                missedInfected++;
+                missedEl.innerText = missedInfected;
+                if (missedInfected >= 5) gameOver();
+            }
+            this.markedForDeletion = true;
+        }
+    }
+    hit() {
+	        if (this.isExploding) return; // Prevent double-hits
+
+	        if (this.isInfected) {
+	            score += 100;
+	            if (score >= 1500) showWin();
+	        } else {
+	            score = Math.max(0, score - 200);
+	        }
+	        scoreEl.innerText = score;
+
+	        // Start explosion sequence instead of immediate deletion
+	        this.isExploding = true;
+    }
+   draw() {
+           ctx.save();
+
+           let imgToDraw;
+           if (this.isExploding) {
+               // Select the explosion image based on type
+               imgToDraw = this.type === 0 ? ship1Explode : ship2Explode;
+           } else {
+               // Standard selection logic
+               if (this.type === 0) {
+                   imgToDraw = this.isInfected ? purpleShipCanvas : shipImg;
+               } else {
+                   imgToDraw = this.isInfected ? purpleShipCanvas2 : shipImg2;
+               }
+           }
+
+           if (this.direction === -1) {
+               ctx.translate(this.x + this.width, this.y);
+               ctx.scale(-1, 1);
+               ctx.drawImage(imgToDraw, 0, 0, this.width, this.height);
+
+               // Only draw virus if NOT exploding
+               if (this.isInfected && !this.isExploding) {
+                   ctx.drawImage(virusImg, this.width/2 - 20, 10, 40, 40);
+               }
+           } else {
+               ctx.drawImage(imgToDraw, this.x, this.y, this.width, this.height);
+
+               if (this.isInfected && !this.isExploding) {
+                   ctx.drawImage(virusImg, this.x + this.width/2 - 20, this.y - 30, 50, 50);
+               }
+           }
+           ctx.restore();
+       }
+}
+
+
+let ships = [];
+let bullets = [];
+let spawnTimer = 0;
+
+function showWin() {
+    gameActive = false;
+    const randNum = Math.floor(Math.random() * 160) + 1;
+    const formattedNum = randNum.toString().padStart(2, '0');
+    endImage.src = `https://md19811.github.io/Manillen/randomM/${formattedNum}.jpg`;
+    endMsg.innerText = "MILESTONE REACHED! Click to play again.";
+    endMsg.style.background = "rgba(0, 255, 100, 0.7)";
+    endOverlay.style.display = 'flex';
+    document.body.style.cursor = 'default';
+}
+
+function gameOver() {
+    gameActive = false;
+    endImage.src = 'lost.png';
+    endMsg.innerText = "QUARANTINE BREACHED. Click to try again.";
+    endMsg.style.background = "rgba(255, 0, 0, 0.7)";
+    endOverlay.style.display = 'flex';
+    document.body.style.cursor = 'default';
+}
+
+function animate() {
+    if (!gameActive) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = '#0a1a2f';
+    ctx.fillRect(0, canvas.height - 200, canvas.width, 200);
+
+    if (spawnTimer-- <= 0) {
+        ships.push(new Ship());
+        spawnTimer = 45;
+    }
+
+    ships.forEach(s => { s.update(); s.draw(); });
+    bullets.forEach(b => { b.update(); b.draw(); });
+    ships = ships.filter(s => !s.markedForDeletion);
+    bullets = bullets.filter(b => !b.markedForDeletion);
+
+    // Crosshair
+    ctx.strokeStyle = "#00ffcc";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(mouseX, mouseY, 15, 0, Math.PI * 2);
+    ctx.moveTo(mouseX - 20, mouseY); ctx.lineTo(mouseX + 20, mouseY);
+    ctx.moveTo(mouseX, mouseY - 20); ctx.lineTo(mouseX, mouseY + 20);
+    ctx.stroke();
+
+    requestAnimationFrame(animate);
+}
+
+window.addEventListener('mousemove', (e) => { mouseX = e.clientX; mouseY = e.clientY; });
+
+
+
+window.addEventListener('mousedown', () => {
+    if (gameActive) {
+        bullets.push(new Bullet(mouseX, mouseY));
+
+        // Change the gun to gun2.png when firing
+        gunImgElement.src = "gun2.png";
+
+        // Optional: Change it back to gun.png after a short delay (e.g., 100ms)
+        // to create a "muzzle flash" or recoil effect
+        setTimeout(() => {
+            gunImgElement.src = "gun.png";
+        }, 100);
+    }
+});
+
+
+
+animate();
+window.addEventListener('resize', () => {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+});
+</script>
+</body>
+</html>
