@@ -280,7 +280,7 @@ let spawnTimer = 0;
 
 function showWin() {
     gameActive = false;
-    const randNum = Math.floor(Math.random() * 160) + 1;
+    const randNum = Math.floor(Math.random() * 200) + 1;
     const formattedNum = randNum.toString().padStart(2, '0');
     endImage.src = `https://md19811.github.io/Manillen/randomM/${formattedNum}.jpg`;
     endMsg.innerText = "MILESTONE REACHED! Click to play again.";
